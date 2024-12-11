@@ -3,6 +3,94 @@ import pandas as pd
 import joblib
 from sklearn.ensemble import RandomForestRegressor
 import plotly.express as px
+import plotly.graph_objects as go
+
+# Custom CSS for vibrant NBA styling
+st.markdown(
+    """
+    <style>
+    body {
+        background: linear-gradient(to bottom, #0033a0, #ed174c); /* NBA team colors gradient */
+        font-family: 'Trebuchet MS', sans-serif;
+        margin: 0;
+        padding: 0;
+    }
+    .sidebar .sidebar-content {
+        background: linear-gradient(to bottom, #ed174c, #ffcc00); /* Red to yellow gradient */
+        border-radius: 10px;
+        padding: 10px;
+        color: #ffffff;
+    }
+    .stButton > button {
+        background-color: #ffcc00; /* Bold yellow */
+        color: #0033a0;
+        border: none;
+        border-radius: 5px;
+        padding: 10px 15px;
+        font-size: 16px;
+        transition: background-color 0.3s ease;
+    }
+    .stButton > button:hover {
+        background-color: #ffc107; /* Brighter yellow */
+        box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.2);
+    }
+    .stMarkdown h1 {
+        color: #ffffff;
+        font-size: 3em;
+        font-weight: bold;
+        text-shadow: 2px 2px #000000;
+    }
+    .stMarkdown h2, .stMarkdown h3 {
+        color: #f4f4f4;
+    }
+    .block-container {
+        border-radius: 10px;
+        padding: 20px;
+        background-color: rgba(0, 0, 0, 0.8); /* Dark semi-transparent background */
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.3);
+    }
+    .dataframe {
+        background-color: rgba(255, 255, 255, 0.1); /* Transparent table background */
+        color: #ffffff;
+        border-radius: 10px;
+    }
+    .stPlotlyChart {
+        background-color: rgba(0, 0, 0, 0.8); /* Match dark theme */
+        padding: 10px;
+        border-radius: 10px;
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.5);
+    }
+    .styled-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 25px 0;
+        font-size: 18px;
+        text-align: left;
+        border-radius: 5px 5px 0 0;
+        overflow: hidden;
+    }
+    .styled-table th, .styled-table td {
+        padding: 12px 15px;
+    }
+    .styled-table thead tr {
+        background-color: #009879;
+        color: #ffffff;
+        text-align: center;
+        font-weight: bold;
+    }
+    .styled-table tbody tr {
+        border-bottom: 1px solid #dddddd;
+    }
+    .styled-table tbody tr:nth-of-type(even) {
+        background-color: #f3f3f3;
+    }
+    .styled-table tbody tr:last-of-type {
+        border-bottom: 2px solid #009879;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # Mapping for position to numeric values
 position_mapping = {
@@ -39,7 +127,7 @@ injury_types = [
     "back surgery injury",
     "arm injury injury",
     "torn shoulder labrum injury",
-    "lower back spasm injury"
+    "lower back spasm injury",
 ]
 
 # Injury average days dictionary
@@ -71,10 +159,6 @@ average_days_injured = {
     "lower back spasm injury": 234.000000,
 }
 
-
-
-
-
 # Load player dataset
 @st.cache_resource
 def load_player_data():
@@ -87,20 +171,28 @@ def load_rf_model():
 
 # Main Streamlit app
 def main():
-    st.title("NBA Player Performance Predictor")
+    st.title("NBA Player Performance Predictor 🏀")
     st.write(
         """
-        Predict how a player's performance metrics (e.g., points, rebounds, assists) might change
-        if a hypothetical injury occurs, based on their position and other factors.
+        Welcome to the **NBA Player Performance Predictor**! This app helps predict changes in a player's performance metrics
+        after experiencing a hypothetical injury. Simply input the details and see the magic happen!
         """
     )
 
     # Load player data
     player_data = load_player_data()
-    rf_model = load_rf_model()
 
     # Sidebar inputs
     st.sidebar.header("Player and Injury Input")
+    
+    st.sidebar.markdown(
+        """
+        <div style="padding: 10px; background: linear-gradient(to right, #6a11cb, #2575fc); color: white; border-radius: 10px;">
+        <h3>Player Details</h3>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     # Dropdown for player selection
     player_list = sorted(player_data['player_name'].dropna().unique())
@@ -125,19 +217,20 @@ def main():
 
             # Allow manual adjustment of stats
             for stat in default_stats.keys():
-                default_stats[stat] = st.sidebar.number_input(f"{stat}", value=default_stats[stat])
+                default_stats[stat] = st.sidebar.number_input(f"{stat}", value=float(default_stats[stat]))
 
             # Injury details
             injury_type = st.sidebar.selectbox("Select Hypothetical Injury", injury_types)
             # Replace slider with default average based on injury type
-            default_days_injured = average_days_injured[injury_type] or 30  # Use 30 if `None`
+            default_days_injured = average_days_injured[injury_type]
             days_injured = st.sidebar.slider(
                 "Estimated Days Injured",
                 0,
                 365,
                 int(default_days_injured),
-                help=f"Default days for {injury_type}: {int(default_days_injured) if default_days_injured else 'N/A'}"
-            )            
+                help=f"Default days for {injury_type}: {int(default_days_injured)}"
+            )
+
             injury_occurrences = st.sidebar.number_input("Injury Occurrences", min_value=0, value=1)
 
             # Prepare input data
@@ -153,29 +246,46 @@ def main():
             input_data["injury_type"] = pd.factorize(input_data["injury_type"])[0]
 
             # Load Random Forest model
-            try:
-                rf_model = load_rf_model()
+            rf_model = load_rf_model()
 
+            try:
                 # Align input data with the model's feature names
                 expected_features = rf_model.feature_names_in_
-                input_data = input_data.reindex(columns=rf_model.feature_names_in_, fill_value=0)
+                input_data = input_data.reindex(columns=expected_features, fill_value=0)
 
                 # Predict and display results
-                if st.sidebar.button("Predict"):
+                if st.sidebar.button("Predict 🔮"):
                     predictions = rf_model.predict(input_data)
-                    prediction_columns = ["Predicted Change in PTS", "Predicted Change in REB", "Predicted Change inAST"]
+                    prediction_columns = ["Predicted Change in PTS", "Predicted Change in REB", "Predicted Change in AST"]
                     st.subheader("Predicted Post-Injury Performance")
                     st.write("Based on the inputs, here are the predicted metrics:")
-                    st.table(pd.DataFrame(predictions, columns=prediction_columns))
-            except FileNotFoundError:
-                st.error("Model file not found.")
-            except ValueError as e:
-                st.error(f"Error during prediction: {e}")
+                    styled_table = pd.DataFrame(predictions, columns=prediction_columns).style.set_table_attributes('class="styled-table"')
+                    st.write(styled_table.to_html(), unsafe_allow_html=True)
 
-        else:
-            st.sidebar.error("Player details not found in the dataset.")
-    else:
-        st.sidebar.error("Please select a player to view details.")
+                    # Plot predictions
+                    prediction_df = pd.DataFrame(predictions, columns=prediction_columns)
+                    fig = go.Figure()
+
+                    for col in prediction_columns:
+                        fig.add_trace(go.Bar(
+                            x=[col],
+                            y=prediction_df[col],
+                            name=col,
+                            marker=dict(color=px.colors.qualitative.Plotly[prediction_columns.index(col)])
+                        ))
+
+                    fig.update_layout(
+                        title="Predicted Performance Changes",
+                        xaxis_title="Metrics",
+                        yaxis_title="Change Value",
+                        template="plotly_dark",
+                        showlegend=True
+                    )
+
+                    st.plotly_chart(fig)
+
+            except Exception as e:
+                st.error(f"Error: {e}")
 
 if __name__ == "__main__":
     main()
